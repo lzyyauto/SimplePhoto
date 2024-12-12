@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  image-gallery:
+    build: .
+    ports:
+      - "4321:4321"
+    volumes:
+      - ./public/images:/app/public/images
+      - thumbnails-data:/app/public/thumbnails
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+
+volumes:
+  thumbnails-data:

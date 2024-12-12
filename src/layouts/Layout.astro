@@ -1,0 +1,112 @@
+---
+interface Props {
+	title: string;
+}
+
+const { title } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="description" content="Image Gallery" />
+		<meta name="viewport" content="width=device-width" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<meta name="generator" content={Astro.generator} />
+		<title>{title}</title>
+	</head>
+	<body>
+		<slot />
+	</body>
+</html>
+<style is:global>
+	:root {
+		--accent: 59, 130, 246;
+		--accent-light: 147, 197, 253;
+		--accent-dark: 29, 78, 216;
+		
+		/* 亮色主题变量 */
+		--background-light: #ffffff;
+		--text-light: #333333;
+		--card-bg-light: #f3f4f6;
+		--border-light: #e5e7eb;
+		
+		/* 暗色主题变量 */
+		--background-dark: #13151a;
+		--text-dark: #e5e7eb;
+		--card-bg-dark: #23262d;
+		--border-dark: #374151;
+	}
+
+	@media (prefers-color-scheme: light) {
+		:root {
+			--background: var(--background-light);
+			--text: var(--text-light);
+			--card-bg: var(--card-bg-light);
+			--border: var(--border-light);
+		}
+	}
+
+	@media (prefers-color-scheme: dark) {
+		:root {
+			--background: var(--background-dark);
+			--text: var(--text-dark);
+			--card-bg: var(--card-bg-dark);
+			--border: var(--border-dark);
+		}
+	}
+
+	html {
+		font-family: system-ui, sans-serif;
+		background: var(--background);
+		color: var(--text);
+	}
+
+	body {
+		margin: 0;
+		padding: 0;
+		min-height: 100vh;
+	}
+
+	a {
+		color: rgb(var(--accent));
+		text-decoration: none;
+	}
+
+	a:hover {
+		text-decoration: underline;
+	}
+
+	/* 调整卡片和其他元素的颜色 */
+	.link-card, 
+	.folder-card {
+		background-color: var(--card-bg);
+		border: 1px solid var(--border);
+	}
+
+	/* 平滑过渡效果 */
+	html, 
+	body, 
+	.link-card, 
+	.folder-card {
+		transition: background-color 0.3s ease, color 0.3s ease;
+	}
+
+	/* 图片预览背景色调整 */
+	.pswp {
+		--pswp-bg: rgba(0, 0, 0, 0.85);
+	}
+
+	@media (prefers-color-scheme: light) {
+		.pswp {
+			--pswp-bg: rgba(0, 0, 0, 0.85);
+		}
+	}
+
+	@media (prefers-color-scheme: dark) {
+		.pswp {
+			--pswp-bg: rgba(0, 0, 0, 0.95);
+		}
+	}
+</style>
