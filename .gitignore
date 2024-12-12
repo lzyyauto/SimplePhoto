@@ -37,3 +37,6 @@ logs/
 .bolt/
 
 .codesandbox/
+
+# vscode
+.vscode/
