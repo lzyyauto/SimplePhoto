@@ -1,6 +1,12 @@
 ---
 import Layout from '../layouts/Layout.astro';
 import ImageGallery from '../components/ImageGallery.vue';
+import { initializeServices } from '../services/initServices';
+
+// 在服务端初始化
+if (import.meta.env.SSR) {
+  await initializeServices();
+}
 ---
 
 <Layout title="Image Gallery">

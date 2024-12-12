@@ -1,67 +1,38 @@
-import { watch } from 'chokidar';
-import { join } from 'path';
-import sharp from 'sharp';
-import fs from 'fs/promises';
+import { readdir, stat } from 'fs/promises';
+import path from 'path';
+import { IMAGES_DIR } from './constants';
+import { processImage } from '../services/imageService';
+import { logInfo, logError } from './logger';
 
-export interface ImageInfo {
-  path: string;
-  thumbnail: string;
-  width: number;
-  height: number;
-  size: number;
+export async function scanAllImages() {
+  try {
+    logInfo('ImageScanner', '开始扫描图片目录');
+    await scanDirectory(IMAGES_DIR);
+    logInfo('ImageScanner', '图片扫描完成');
+  } catch (error) {
+    await logError('ImageScanner', '扫描过程出错:', error);
+  }
 }
 
-const THUMBNAIL_SIZE = 300;
-const IMAGES_DIR = 'public/images';
-const THUMBNAILS_DIR = 'public/thumbnails';
+async function scanDirectory(dirPath: string) {
+  const fullPath = path.join(process.cwd(), dirPath);
+  const entries = await readdir(fullPath, { withFileTypes: true });
 
-export async function createThumbnail(imagePath: string): Promise<string> {
-  const relativePath = imagePath.replace('public/', '');
-  const thumbnailPath = join(THUMBNAILS_DIR, relativePath);
-  
-  await fs.mkdir(join(process.cwd(), thumbnailPath, '..'), { recursive: true });
-  
-  await sharp(imagePath)
-    .resize(THUMBNAIL_SIZE, THUMBNAIL_SIZE, {
-      fit: 'cover',
-      position: 'center'
-    })
-    .toFile(join(process.cwd(), thumbnailPath));
-    
-  return thumbnailPath;
-}
+  for (const entry of entries) {
+    if (entry.name.startsWith('.')) continue;
 
-export async function scanImages(): Promise<ImageInfo[]> {
-  const images: ImageInfo[] = [];
-  
-  const processImage = async (path: string) => {
-    const metadata = await sharp(path).metadata();
-    const stats = await fs.stat(path);
-    const thumbnailPath = await createThumbnail(path);
-    
-    images.push({
-      path: path.replace('public/', ''),
-      thumbnail: thumbnailPath.replace('public/', ''),
-      width: metadata.width || 0,
-      height: metadata.height || 0,
-      size: stats.size
-    });
-  };
-  
-  const watcher = watch(IMAGES_DIR, {
-    ignored: /(^|[\/\\])\../,
-    persistent: true
-  });
-  
-  watcher
-    .on('add', processImage)
-    .on('change', processImage)
-    .on('unlink', (path) => {
-      const index = images.findIndex(img => img.path === path);
-      if (index > -1) {
-        images.splice(index, 1);
+    const entryPath = path.join(dirPath, entry.name);
+    const entryFullPath = path.join(fullPath, entry.name);
+
+    if (entry.isDirectory()) {
+      logInfo('ImageScanner', `扫描子目录: ${entryPath}`);
+      await scanDirectory(entryPath);
+    } else {
+      const ext = path.extname(entry.name).toLowerCase();
+      if (['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext)) {
+        logInfo('ImageScanner', `处理图片: ${entryPath}`);
+        await processImage(entryFullPath);
       }
-    });
-    
-  return images;
+    }
+  }
 }

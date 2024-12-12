@@ -1,75 +1,41 @@
-import { watch } from 'chokidar';
-import { IMAGES_DIR, SUPPORTED_FORMATS } from '../utils/constants';
-import { ImageInfo } from '../types/image';
-import { processImage } from './imageService';
-import { logError, logInfo } from '../utils/logger';
+import chokidar from 'chokidar';
 import path from 'path';
+import { IMAGES_DIR } from '../utils/constants';
+import { processImage } from './imageService';
+import { db } from './dbService';
+import { logInfo, logError } from '../utils/logger';
 
-const isImage = (filePath: string): boolean => {
-  const ext = path.extname(filePath).toLowerCase();
-  return SUPPORTED_FORMATS.includes(ext);
-};
+export async function startFileWatcher() {
+  const watchPath = path.join(process.cwd(), 'public', IMAGES_DIR);
+  logInfo('FileWatcher', `开始监控目录: ${watchPath}`);
 
-export function createWatcher(
-  onAdd: (image: ImageInfo) => void,
-  onRemove: (path: string) => void
-): void {
-  logInfo('FileWatcher', `开始监听目录: ${path.resolve(IMAGES_DIR)}`);
-
-  const watcher = watch(IMAGES_DIR, {
+  const watcher = chokidar.watch(watchPath, {
     ignored: /(^|[\/\\])\../,
     persistent: true,
-    ignoreInitial: false,
-    recursive: true,
-    awaitWriteFinish: {
-      stabilityThreshold: 1000,
-      pollInterval: 100
-    }
+    ignoreInitial: false // 启动时触发 add 事件
   });
 
-  let initialized = false;
-  const processedFiles = new Set<string>();
-
   watcher
-    .on('ready', () => {
-      initialized = true;
-      logInfo('FileWatcher', '初始扫描完成');
-    })
     .on('add', async (filePath) => {
-      if (processedFiles.has(filePath) || !isImage(filePath)) return;
-      
-      try {
-        const imageInfo = await processImage(filePath);
-        processedFiles.add(filePath);
-        onAdd(imageInfo);
-      } catch (error) {
-        await logError('FileWatcher', error);
+      const ext = path.extname(filePath).toLowerCase();
+      if (['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext)) {
+        logInfo('FileWatcher', `发现新文件: ${filePath}`);
+        await processImage(filePath);
       }
     })
     .on('change', async (filePath) => {
-      if (!isImage(filePath)) return;
-      
-      try {
-        const imageInfo = await processImage(filePath);
-        onAdd(imageInfo);
-      } catch (error) {
-        await logError('FileWatcher', error);
+      const ext = path.extname(filePath).toLowerCase();
+      if (['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext)) {
+        logInfo('FileWatcher', `文件变更: ${filePath}`);
+        await processImage(filePath);
       }
     })
-    .on('unlink', (filePath) => {
-      processedFiles.delete(filePath);
-      if (isImage(filePath)) {
-        onRemove(filePath);
-      }
-    })
-    .on('error', (error) => {
-      logError('FileWatcher', error);
+    .on('unlink', async (filePath) => {
+      logInfo('FileWatcher', `文件删除: ${filePath}`);
+      const relativePath = path.relative(path.join(process.cwd(), 'public'), filePath);
+      const publicPath = `/${relativePath}`;
+      await db.removeImage(publicPath);
     });
 
-  setTimeout(() => {
-    if (!initialized) {
-      logInfo('FileWatcher', '强制重新扫描目录');
-      watcher.close().then(() => createWatcher(onAdd, onRemove));
-    }
-  }, 5000);
+  logInfo('FileWatcher', '文件监控服务已启动');
 }

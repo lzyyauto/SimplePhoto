@@ -1,116 +1,85 @@
 import sharp from 'sharp'
 import path from 'path'
-import { stat, mkdir } from 'fs/promises'
-import { THUMBNAIL_SIZE, THUMBNAILS_DIR, IMAGES_DIR } from '../utils/constants'
-import { logError, logInfo } from '../utils/logger'
+import fs from 'fs/promises'
+import { IMAGES_DIR, THUMBNAILS_DIR, PUBLIC_PATH } from '../utils/constants'
 import { db } from './dbService'
-import { watch } from 'chokidar'
+import { logInfo, logError } from '../utils/logger'
 
-async function getImageMetadata(imagePath: string) {
-  const metadata = await sharp(imagePath).metadata()
-  const stats = await stat(imagePath)
-  return {
-    width: metadata.width || 0,
-    height: metadata.height || 0,
-    size: stats.size
-  }
-}
+const THUMBNAIL_SIZE_THRESHOLD = 1024 * 1024; // 1MB
 
-async function generateThumbnail(imagePath: string): Promise<string> {
-  const relativePath = path.relative(IMAGES_DIR, imagePath)
-  const thumbnailPath = path.join(THUMBNAILS_DIR, relativePath)
-  
+export async function processImage(imagePath: string) {
   try {
-    await mkdir(path.dirname(thumbnailPath), { recursive: true })
-    await sharp(imagePath)
-      .resize(THUMBNAIL_SIZE, THUMBNAIL_SIZE, {
-        fit: 'cover',
-        position: 'center'
-      })
-      .toFile(thumbnailPath)
+    logInfo('ImageService', `开始处理图片: ${imagePath}`);
     
-    return thumbnailPath.replace('public', '')
-  } catch (error) {
-    await logError('generateThumbnail', error)
-    throw error
-  }
-}
+    // 1. 获取图片信息
+    const stats = await fs.stat(imagePath);
+    const metadata = await sharp(imagePath).metadata();
+    
+    // 2. 生成相对路径，移除 public 前缀
+    const relativePath = path.relative(path.join(process.cwd(), 'public', IMAGES_DIR), imagePath);
+    const publicPath = `/${IMAGES_DIR}/${relativePath}`;
 
-async function processImage(imagePath: string) {
-  try {
-    // 尝试从数据库获取，如果数据库未初始化或查询失败则跳过
-    try {
-      const cached = await db.getImage(imagePath);
-      if (cached) {
-        return {
-          path: cached.path,
-          thumbnail: cached.thumbnail_path,
-          width: cached.width,
-          height: cached.height,
-          size: cached.size
-        };
-      }
-    } catch (error) {
-      await logError('processImage', 'Database query failed, falling back to file processing');
+    // 3. 判断是否需要生成缩略图
+    let thumbnailPath = publicPath; // 默认使用原图路径
+    if (stats.size > THUMBNAIL_SIZE_THRESHOLD) {
+      logInfo('ImageService', `图片大于${THUMBNAIL_SIZE_THRESHOLD}字节，生成缩略图`);
+      
+      // 确保使用正确的缩略图路径
+      const thumbnailFullPath = path.join(PUBLIC_PATH, THUMBNAILS_DIR, relativePath);
+      const thumbnailDir = path.dirname(thumbnailFullPath);
+      
+      // 确保缩略图目录存在
+      await fs.mkdir(thumbnailDir, { recursive: true });
+      
+      // 生成缩略图
+      await sharp(imagePath)
+        .resize(800, 800, {
+          fit: 'inside',
+          withoutEnlargement: true
+        })
+        .toFile(thumbnailFullPath);
+      
+      thumbnailPath = `/${THUMBNAILS_DIR}/${relativePath}`;
+      logInfo('ImageService', `缩略图已生成: ${thumbnailPath}`);
     }
 
-    const metadata = await getImageMetadata(imagePath);
-    const relativePath = path.relative(IMAGES_DIR, imagePath);
-    const publicPath = `/images/${relativePath.replace(/\\/g, '/')}`;
-    const thumbnailPath = await generateThumbnail(imagePath);
-    
-    // 尝试保存到数据库，如果失败则继续
-    try {
-      await db.saveImage(imagePath, {
-        ...metadata,
-        thumbnailPath,
-        format: path.extname(imagePath).slice(1)
-      });
-    } catch (error) {
-      await logError('processImage', 'Failed to save to database');
-    }
-    
-    return {
+    // 4. 保存到数据库
+    const imageData = {
       path: publicPath,
-      thumbnail: thumbnailPath,
-      width: metadata.width,
-      height: metadata.height,
-      size: metadata.size
+      thumbnailPath,
+      width: metadata.width || 0,
+      height: metadata.height || 0,
+      size: stats.size,
+      format: metadata.format,
+      last_modified: Math.floor(stats.mtimeMs / 1000),
+      created_at: Math.floor(Date.now() / 1000)
     };
+
+    await db.saveImage(publicPath, imageData);
+    logInfo('ImageService', `图片处理完成: ${publicPath}`);
+    
+    return imageData;
   } catch (error) {
-    await logError('processImage', error);
+    await logError('ImageService', `处理图片失败: ${imagePath}`, error);
     throw error;
   }
 }
 
-// 修改初始化函数
 export async function initImageService() {
   try {
-    const dbInitialized = await db.init();
-    if (!dbInitialized) {
-      await logError('ImageService', 'Database initialization failed, continuing without database');
-    }
+    logInfo('ImageService', 'Initializing image service...')
+    
+    // 初始化数据库
+    await db.init()
+    logInfo('ImageService', 'Database initialized')
+    
+    // 确保缩略图目录存在
+    await fs.mkdir(path.join('public', THUMBNAILS_DIR), { recursive: true })
+    logInfo('ImageService', 'Thumbnail directory created')
 
-    const watcher = watch(IMAGES_DIR, {
-      ignored: /(^|[\/\\])\../,
-      persistent: true
-    })
-
-    watcher
-      .on('add', async (filePath) => {
-        if (path.extname(filePath).toLowerCase() in ['.jpg', '.jpeg', '.png', '.gif', '.webp']) {
-          await processImage(filePath)
-        }
-      })
-      .on('unlink', async (filePath) => {
-        await db.removeImage(filePath)
-      })
-
-    logInfo('ImageService', 'File watcher started')
+    return true
   } catch (error) {
-    await logError('ImageService', error);
-    // 即使初始化失败也不抛出错误，让服务继续运行
+    await logError('ImageService', 'Failed to initialize image service:', error)
+    return false
   }
 }
-
-export { processImage, getImageMetadata }

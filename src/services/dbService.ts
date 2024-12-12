@@ -1,22 +1,40 @@
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import { ImageMetadata } from '../types/image';
-import { logError } from '../utils/logger';
+import { logError, logInfo } from '../utils/logger';
 import path from 'path';
+import fs from 'fs/promises';
+
+const DB_DIR = 'data';
+const DB_FILE = 'gallery.db';
 
 export class DatabaseService {
   private db: any;
 
   async init() {
     try {
+      // 确保数据目录存在
+      const dbDir = path.join(process.cwd(), DB_DIR);
+      try {
+        await fs.access(dbDir);
+      } catch {
+        logInfo('DatabaseService', `创建数据库目录: ${dbDir}`);
+        await fs.mkdir(dbDir, { recursive: true });
+      }
+
+      const dbPath = path.join(dbDir, DB_FILE);
+      logInfo('DatabaseService', `初始化数据库: ${dbPath}`);
+
       this.db = await open({
-        filename: path.join(process.cwd(), 'data/gallery.db'),
+        filename: dbPath,
         driver: sqlite3.Database
       });
 
       await this.createTables();
+      logInfo('DatabaseService', '数据库初始化完成');
+      return true;
     } catch (error) {
-      await logError('DatabaseService', error);
+      await logError('DatabaseService', '数据库初始化失败:', error);
       throw error;
     }
   }
@@ -35,6 +53,7 @@ export class DatabaseService {
         created_at INTEGER DEFAULT (strftime('%s', 'now'))
       );
     `);
+    logInfo('DatabaseService', '数据表创建/确认完成');
   }
 
   async getImage(path: string) {
