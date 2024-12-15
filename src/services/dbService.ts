@@ -1,77 +1,109 @@
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
-import { ImageMetadata } from '../types/image';
-import { logError, logInfo } from '../utils/logger';
-import path from 'path';
-import fs from 'fs/promises';
+import { logInfo, logError } from '../utils/logger';
 
-const DB_DIR = 'data';
-const DB_FILE = 'gallery.db';
+class DatabaseService {
+  private db: any = null;
 
-export class DatabaseService {
-  private db: any;
-
-  async init() {
+  async init(rebuild: boolean = false) {
     try {
-      // 确保数据目录存在
-      const dbDir = path.join(process.cwd(), DB_DIR);
-      try {
-        await fs.access(dbDir);
-      } catch {
-        logInfo('DatabaseService', `创建数据库目录: ${dbDir}`);
-        await fs.mkdir(dbDir, { recursive: true });
-      }
-
-      const dbPath = path.join(dbDir, DB_FILE);
-      logInfo('DatabaseService', `初始化数据库: ${dbPath}`);
-
       this.db = await open({
-        filename: dbPath,
+        filename: 'data/gallery.db',
         driver: sqlite3.Database
       });
 
-      await this.createTables();
-      logInfo('DatabaseService', '数据库初始化完成');
-      return true;
+      if (rebuild) {
+        // 如果需要重建，先删除表
+        await this.db.exec('DROP TABLE IF EXISTS images');
+      }
+
+      await this.db.exec(`
+        CREATE TABLE IF NOT EXISTS images (
+          path TEXT PRIMARY KEY,
+          original_path TEXT,
+          thumbnail_path TEXT,
+          width INTEGER,
+          height INTEGER,
+          size INTEGER,
+          format TEXT,
+          is_animated BOOLEAN,
+          last_modified INTEGER,
+          created_at INTEGER,
+          exif_data TEXT
+        )
+      `);
+
+      logInfo('DatabaseService', rebuild ? '数据表重建完成' : '数据表确认完成');
     } catch (error) {
-      await logError('DatabaseService', '数据库初始化失败:', error);
+      logError('DatabaseService', '初始化数据库失败:', error);
       throw error;
     }
   }
 
-  private async createTables() {
-    await this.db.exec(`
-      CREATE TABLE IF NOT EXISTS images (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        path TEXT UNIQUE,
-        thumbnail_path TEXT,
-        width INTEGER,
-        height INTEGER,
-        size INTEGER,
-        format TEXT,
-        last_modified INTEGER,
-        created_at INTEGER DEFAULT (strftime('%s', 'now'))
+  async saveImage(path: string, data: any) {
+    try {
+      const {
+        originalPath,
+        thumbnailPath,
+        width,
+        height,
+        size,
+        format,
+        isAnimated,
+        last_modified,
+        created_at,
+        exif
+      } = data;
+
+      await this.db.run(
+        `INSERT OR REPLACE INTO images (
+          path,
+          original_path,
+          thumbnail_path,
+          width,
+          height,
+          size,
+          format,
+          is_animated,
+          last_modified,
+          created_at,
+          exif_data
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          path,
+          originalPath || path,
+          thumbnailPath,
+          width,
+          height,
+          size,
+          format,
+          isAnimated ? 1 : 0,
+          last_modified,
+          created_at,
+          exif ? JSON.stringify(exif) : null
+        ]
       );
-    `);
-    logInfo('DatabaseService', '数据表创建/确认完成');
+    } catch (error) {
+      logError('DatabaseService', '保存图片数据失败:', error);
+      throw error;
+    }
   }
 
   async getImage(path: string) {
-    return await this.db.get('SELECT * FROM images WHERE path = ?', [path]);
-  }
-
-  async saveImage(path: string, metadata: ImageMetadata & { thumbnailPath: string }) {
-    const lastModified = Math.floor(Date.now() / 1000);
-    await this.db.run(`
-      INSERT OR REPLACE INTO images 
-      (path, thumbnail_path, width, height, size, format, last_modified)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `, [path, metadata.thumbnailPath, metadata.width, metadata.height, 
-        metadata.size, metadata.format, lastModified]);
-  }
-
-  async removeImage(path: string) {
-    await this.db.run('DELETE FROM images WHERE path = ?', [path]);
+    try {
+      const row = await this.db.get('SELECT * FROM images WHERE path = ?', [path]);
+      if (row) {
+        return {
+          ...row,
+          isAnimated: Boolean(row.is_animated),
+          exif: row.exif_data ? JSON.parse(row.exif_data) : null
+        };
+      }
+      return null;
+    } catch (error) {
+      logError('DatabaseService', '获取图片数据失败:', error);
+      throw error;
+    }
   }
 }
 

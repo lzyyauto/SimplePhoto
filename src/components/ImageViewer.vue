@@ -7,6 +7,9 @@ interface ImageInfo {
   width?: number
   height?: number
   alt?: string
+  size?: number
+  format?: string
+  exif?: any
 }
 
 const props = defineProps<{
@@ -20,6 +23,7 @@ const isDragging = ref(false)
 const startPos = ref({ x: 0, y: 0 })
 const translate = ref({ x: 0, y: 0 })
 const isZoomed = ref(false)
+const showInfo = ref(false)
 
 function openGallery(index: number) {
   currentIndex.value = index
@@ -114,6 +118,20 @@ function handleImageClick() {
   }
 }
 
+function toggleInfo() {
+  showInfo.value = !showInfo.value
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(2) + ' MB'
+}
+
+function formatDate(timestamp: number): string {
+  return new Date(timestamp * 1000).toLocaleString()
+}
+
 // 暴露方法给父组件
 defineExpose({
   openGallery
@@ -130,6 +148,27 @@ defineExpose({
   >
     <!-- 控制按钮组 -->
     <div class="absolute top-4 right-4 flex items-center gap-4 z-50">
+      <!-- 信息按钮 -->
+      <button 
+        class="text-white hover:text-gray-300 w-8 h-8 flex items-center justify-center"
+        @click="toggleInfo"
+      >
+        <svg 
+          xmlns="http://www.w3.org/2000/svg" 
+          class="h-6 w-6" 
+          fill="none" 
+          viewBox="0 0 24 24" 
+          stroke="currentColor"
+        >
+          <path 
+            stroke-linecap="round" 
+            stroke-linejoin="round" 
+            stroke-width="2" 
+            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+          />
+        </svg>
+      </button>
+
       <!-- 放大按钮 -->
       <button 
         class="text-white hover:text-gray-300 w-8 h-8 flex items-center justify-center"
@@ -166,6 +205,42 @@ defineExpose({
       >
         ×
       </button>
+    </div>
+
+    <!-- 图片信息面板 -->
+    <div 
+      v-if="showInfo"
+      class="absolute right-4 top-16 bg-black bg-opacity-75 text-white p-4 rounded-lg max-w-sm z-50"
+    >
+      <h3 class="text-lg font-semibold mb-2">图片信息</h3>
+      <dl class="space-y-1">
+        <template v-if="props.images[currentIndex]">
+          <div class="grid grid-cols-3 gap-2">
+            <dt class="text-gray-400">文件名:</dt>
+            <dd class="col-span-2">{{ props.images[currentIndex].alt }}</dd>
+          </div>
+          <div class="grid grid-cols-3 gap-2">
+            <dt class="text-gray-400">尺寸:</dt>
+            <dd class="col-span-2">{{ props.images[currentIndex].width }} × {{ props.images[currentIndex].height }}</dd>
+          </div>
+          <div class="grid grid-cols-3 gap-2" v-if="props.images[currentIndex].size">
+            <dt class="text-gray-400">大小:</dt>
+            <dd class="col-span-2">{{ formatFileSize(props.images[currentIndex].size) }}</dd>
+          </div>
+          <div class="grid grid-cols-3 gap-2" v-if="props.images[currentIndex].format">
+            <dt class="text-gray-400">格式:</dt>
+            <dd class="col-span-2">{{ props.images[currentIndex].format.toUpperCase() }}</dd>
+          </div>
+          <!-- EXIF 信息 -->
+          <template v-if="props.images[currentIndex].exif">
+            <div class="border-t border-gray-600 my-2"></div>
+            <div class="grid grid-cols-3 gap-2" v-for="(value, key) in props.images[currentIndex].exif" :key="key">
+              <dt class="text-gray-400">{{ key }}:</dt>
+              <dd class="col-span-2">{{ value }}</dd>
+            </div>
+          </template>
+        </template>
+      </dl>
     </div>
 
     <!-- 上一张/下一张按钮保持不变 -->

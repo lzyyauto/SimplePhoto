@@ -16,6 +16,7 @@
     "astro": "^4.0.0",
     "chokidar": "^3.6.0",
     "date-fns": "^4.1.0",
+    "heic-convert": "^2.1.0",
     "photoswipe": "^5.4.4",
     "sharp": "^0.32.6",
     "sqlite": "^5.1.1",

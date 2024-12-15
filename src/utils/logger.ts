@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { format } from 'date-fns';
+import { appendFile } from 'fs/promises';
 
 const LOG_DIR = 'logs';
 
@@ -22,9 +23,13 @@ async function writeLog(filename: string, content: string) {
   await fs.appendFile(logFile, `[${time}] ${content}\n`, 'utf-8');
 }
 
-export async function logError(context: string, error: any) {
-  const content = `${context}: ${error.message}\n${error.stack}\n`;
-  await writeLog('error', content);
+export async function logError(module: string, message: string, error: any) {
+  const errorMessage = error?.message || error?.toString() || '未知错误';
+  const timestamp = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+  const logEntry = `[${timestamp}] ${module}: ${message} ${errorMessage}`;
+  
+  console.error(logEntry);
+  await appendFile('logs/error-2024-12-15.log', logEntry + '\n');
 }
 
 export async function logInfo(context: string, message: string, data?: any) {

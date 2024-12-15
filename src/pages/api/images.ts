@@ -4,6 +4,15 @@ import { readdir } from 'fs/promises';
 import path from 'path';
 import { processImage } from '../../services/imageService';
 import { logInfo, logError } from '../../utils/logger';
+import { db } from '../../services/dbService';
+
+// 支持的图片格式
+const SUPPORTED_EXTENSIONS = [
+  '.jpg', '.jpeg', '.png', '.gif', '.webp', 
+  '.heic', '.heif',  // 添加 HEIC/HEIF 支持
+  '.JPG', '.JPEG', '.PNG', '.GIF', '.WEBP', 
+  '.HEIC', '.HEIF'   // 添加大写扩展名
+];
 
 export const GET: APIRoute = async ({ request }) => {
   try {
@@ -30,18 +39,30 @@ export const GET: APIRoute = async ({ request }) => {
         });
       } else {
         const ext = path.extname(entry.name).toLowerCase();
-        if (['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext)) {
-          const imageInfo = await processImage(path.join(fullPath, entry.name));
-          if (imageInfo) {
-            items.push({
-              type: 'image',
-              info: {
-                ...imageInfo,
-                path: path.join(IMAGES_URL, relativePath),
-                originalName: entry.name
-              }
-            });
+        if (SUPPORTED_EXTENSIONS.includes(ext.toLowerCase())) {
+          const imagePath = path.join(IMAGES_URL, relativePath);
+          
+          // 先查询数据库
+          let imageInfo = await db.getImage(imagePath);
+          
+          // 如果数据库中没有记录，则处理图片
+          if (!imageInfo) {
+            logInfo('API/images', `处理新图片: ${entry.name} (${ext})`);
+            try {
+              imageInfo = await processImage(path.join(fullPath, entry.name));
+            } catch (error) {
+              logError('API/images', `处理图片失败: ${entry.name}`, error);
+              continue;
+            }
           }
+
+          items.push({
+            type: 'image',
+            info: {
+              ...imageInfo,
+              originalName: entry.name
+            }
+          });
         }
       }
     }
