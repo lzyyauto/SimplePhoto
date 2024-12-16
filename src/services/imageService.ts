@@ -45,29 +45,46 @@ async function extractHeicExif(inputPath: string) {
   }
 }
 
-export async function processImage(filePath: string): Promise<ImageInfo> {
+export async function processImage(filePath: string) {
   try {
-    const metadata = await sharp(filePath).metadata();
-    const stats = await fs.stat(filePath);
+    const normalizedPath = filePath.replace(/^.*public\//, '');
+    const absolutePath = path.join(process.cwd(), 'public', normalizedPath);
     
-    const relativePath = path.relative('public', filePath);
-    const thumbnailPath = await generateThumbnail(relativePath);
+    logInfo('ImageService', `处理图片，完整路径: ${absolutePath}`);
     
-    const imageInfo: ImageInfo = {
-      path: relativePath,
-      thumbnail: thumbnailPath,
-      width: metadata.width || 0,
-      height: metadata.height || 0,
-      size: stats.size
-    };
+    // 检查文件是否存在
+    try {
+      await fs.access(absolutePath);
+    } catch (error) {
+      logError('ImageService', `文件不存在: ${absolutePath}`);
+      return null;
+    }
 
-    await db.saveImage(imageInfo);
-    return imageInfo;
+    // 获取图片信息
+    const metadata = await sharp(absolutePath).metadata();
+    const stats = await fs.stat(absolutePath);
+    
+    // 生成缩略图
+    const thumbnailPath = await generateThumbnail(normalizedPath);
+    
+    // 保存到数据库
+    await db.saveImage(normalizedPath, {
+      originalPath: normalizedPath,
+      thumbnailPath,
+      width: metadata.width,
+      height: metadata.height,
+      size: stats.size,
+      format: metadata.format,
+      isAnimated: metadata.pages && metadata.pages > 1,
+      last_modified: stats.mtimeMs,
+      created_at: Date.now(),
+      exif: metadata.exif
+    });
+
+    return thumbnailPath;
   } catch (error) {
-    logError('ImageService', `处理图片失败: ${filePath}`);
-    throw error;
-  } finally {
-    // 清理任何临时资源（如果有的话）
+    logError('ImageService', `处理图片失败: ${filePath}`, error);
+    return null;
   }
 }
 
@@ -149,5 +166,10 @@ export async function scanAllImages() {
     const fullPath = path.join(process.cwd(), IMAGES_DIR);
     logInfo('ImageScanner', `实际扫描路径: ${fullPath}`);
     // ... 其余代码
+  } catch (error) {
+    logError('ImageService', '初始化图片服务失败:', error);
+    return false;
+  } finally {
+    // 清理工作
   }
 }

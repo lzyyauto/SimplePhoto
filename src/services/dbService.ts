@@ -7,13 +7,15 @@ class DatabaseService {
 
   async init(rebuild: boolean = false) {
     try {
+      logInfo('DatabaseService', '开始初始化数据库');
+      
       this.db = await open({
         filename: 'data/gallery.db',
         driver: sqlite3.Database
       });
 
       if (rebuild) {
-        // 如果需要重建，先删除表
+        logInfo('DatabaseService', '重建数据表');
         await this.db.exec('DROP TABLE IF EXISTS images');
       }
 
@@ -33,6 +35,12 @@ class DatabaseService {
         )
       `);
 
+      // 验证表是否创建成功
+      const tableCheck = await this.db.get("SELECT name FROM sqlite_master WHERE type='table' AND name='images'");
+      if (!tableCheck) {
+        throw new Error('数据表创建失败');
+      }
+
       logInfo('DatabaseService', rebuild ? '数据表重建完成' : '数据表确认完成');
     } catch (error) {
       logError('DatabaseService', '初始化数据库失败:', error);
@@ -42,6 +50,8 @@ class DatabaseService {
 
   async saveImage(path: string, data: any) {
     try {
+      logInfo('DatabaseService', `保存图片数据: ${path}`);
+      
       const {
         originalPath,
         thumbnailPath,
@@ -55,7 +65,7 @@ class DatabaseService {
         exif
       } = data;
 
-      await this.db.run(
+      const result = await this.db.run(
         `INSERT OR REPLACE INTO images (
           path,
           original_path,
@@ -83,8 +93,11 @@ class DatabaseService {
           exif ? JSON.stringify(exif) : null
         ]
       );
+
+      logInfo('DatabaseService', `图片数据保存成功: ${path}`);
+      return result;
     } catch (error) {
-      logError('DatabaseService', '保存图片数据失败:', error);
+      logError('DatabaseService', `保存图片数据失败: ${path}`, error);
       throw error;
     }
   }

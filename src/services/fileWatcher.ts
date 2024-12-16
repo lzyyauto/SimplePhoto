@@ -1,12 +1,12 @@
 import chokidar from 'chokidar';
 import path from 'path';
 import { IMAGES_DIR } from '../utils/constants';
-import { processImage } from './imageService';
+import { processImage } from '../services/imageService';
 import { db } from './dbService';
 import { logInfo, logError } from '../utils/logger';
 
 export async function startFileWatcher() {
-  const watchPath = path.join(process.cwd(), 'public', IMAGES_DIR);
+  const watchPath = path.join(process.cwd(), IMAGES_DIR);
   logInfo('FileWatcher', `开始监控目录: ${watchPath}`);
 
   const watcher = chokidar.watch(watchPath, {

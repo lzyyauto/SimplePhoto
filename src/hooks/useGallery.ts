@@ -7,7 +7,7 @@ export function useGallery(images: ImageInfo[]) {
 
   function openGallery(index: number) {
     const items = images.map(img => ({
-      src: '/' + img.path,
+      src: img.path.startsWith('/') ? img.path : '/' + img.path,
       w: img.width,
       h: img.height
     }));

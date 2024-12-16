@@ -40,7 +40,7 @@ export const GET: APIRoute = async ({ request }) => {
       } else {
         const ext = path.extname(entry.name).toLowerCase();
         if (SUPPORTED_EXTENSIONS.includes(ext.toLowerCase())) {
-          const imagePath = path.join(IMAGES_URL, relativePath);
+          const imagePath = '/' + path.join('images', relativePath).replace(/\\/g, '/');
           
           // 先查询数据库
           let imageInfo = await db.getImage(imagePath);

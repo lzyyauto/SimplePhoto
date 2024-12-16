@@ -7,12 +7,14 @@ const THUMBNAIL_DIR = 'thumbnails';
 const THUMBNAIL_SIZE = 400; // 缩略图最大边长
 
 export function getThumbnailPath(imagePath: string): string {
-  return path.join(THUMBNAIL_DIR, imagePath);
+  const normalizedPath = imagePath.replace(/^\//, '');
+  return '/' + path.join('thumbnails', normalizedPath).replace(/\\/g, '/');
 }
 
 export async function generateThumbnail(imagePath: string): Promise<string> {
   const thumbnailPath = getThumbnailPath(imagePath);
-  const fullInputPath = path.join('public', imagePath);
+  const inputPath = imagePath.replace(/^public\//, '');
+  const fullInputPath = path.join('public', inputPath);
   const fullOutputPath = path.join('public', thumbnailPath);
   
   await fs.mkdir(path.dirname(fullOutputPath), { recursive: true });
